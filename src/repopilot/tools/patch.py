@@ -24,6 +24,7 @@ class PatchInspection:
 class PatchApplyData:
     changed_files: tuple[str, ...]
     deletes_files: bool
+    already_applied: bool = False
 
 
 def _elapsed_ms(started: float) -> int:
@@ -107,8 +108,11 @@ def _run_git_apply(
     patch_text: str,
     *,
     check_only: bool,
+    reverse: bool = False,
 ) -> subprocess.CompletedProcess[bytes]:
     command = ["git", "apply"]
+    if reverse:
+        command.append("--reverse")
     if check_only:
         command.extend(["--check", "--whitespace=error-all"])
     else:
@@ -129,6 +133,7 @@ def apply_patch(
     patch_text: str,
     *,
     deletion_approved: bool = False,
+    already_applied_ok: bool = False,
     max_bytes: int = 1_000_000,
 ) -> ToolResult[PatchApplyData]:
     """Check and atomically apply a validated patch to the worktree."""
@@ -171,6 +176,25 @@ def apply_patch(
             duration_ms=_elapsed_ms(started),
         )
     if checked.returncode != 0:
+        if already_applied_ok:
+            try:
+                reverse_checked = _run_git_apply(
+                    root,
+                    patch_text,
+                    check_only=True,
+                    reverse=True,
+                )
+            except (FileNotFoundError, OSError, UnicodeError, ValueError):
+                reverse_checked = None
+            if reverse_checked is not None and reverse_checked.returncode == 0:
+                return ToolResult.success(
+                    PatchApplyData(
+                        changed_files=inspection.paths,
+                        deletes_files=inspection.deletes_files,
+                        already_applied=True,
+                    ),
+                    duration_ms=_elapsed_ms(started),
+                )
         return ToolResult.failure(
             "patch_check_failed",
             "Git rejected the patch during validation.",
@@ -197,5 +221,6 @@ def apply_patch(
     data = PatchApplyData(
         changed_files=inspection.paths,
         deletes_files=inspection.deletes_files,
+        already_applied=False,
     )
     return ToolResult.success(data, duration_ms=_elapsed_ms(started))

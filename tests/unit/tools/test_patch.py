@@ -66,7 +66,40 @@ def test_apply_patch_modifies_existing_file(git_repo: Path) -> None:
     assert result.ok is True
     assert result.data is not None
     assert result.data.changed_files == ("app.py",)
+    assert result.data.already_applied is False
     assert (git_repo / "app.py").read_text(encoding="utf-8") == "value = 2\n"
+
+
+def test_apply_patch_can_reconcile_verified_prior_application(git_repo: Path) -> None:
+    first = apply_patch(git_repo, MODIFY_PATCH)
+    before = _snapshot(git_repo)
+
+    replay = apply_patch(git_repo, MODIFY_PATCH, already_applied_ok=True)
+
+    assert first.ok is True
+    assert replay.ok is True
+    assert replay.data is not None
+    assert replay.data.changed_files == ("app.py",)
+    assert replay.data.already_applied is True
+    assert _snapshot(git_repo) == before
+
+
+def test_apply_patch_replay_is_conflict_without_reconciliation(git_repo: Path) -> None:
+    assert apply_patch(git_repo, MODIFY_PATCH).ok is True
+
+    replay = apply_patch(git_repo, MODIFY_PATCH)
+
+    assert replay.ok is False
+    assert replay.error_code == "patch_check_failed"
+
+
+def test_apply_patch_reconciliation_rejects_unrelated_content(git_repo: Path) -> None:
+    (git_repo / "app.py").write_text("value = 99\n", encoding="utf-8", newline="")
+
+    result = apply_patch(git_repo, MODIFY_PATCH, already_applied_ok=True)
+
+    assert result.ok is False
+    assert result.error_code == "patch_check_failed"
 
 
 def test_apply_patch_creates_new_file(git_repo: Path) -> None:
