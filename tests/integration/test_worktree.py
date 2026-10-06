@@ -90,6 +90,77 @@ def test_create_is_idempotent_for_registered_task_worktree(
     assert manager.cleanup(first.data, approved=True).ok is True
 
 
+def test_create_uses_exact_captured_commit_after_original_advances(
+    git_repo: Path,
+    tmp_path: Path,
+) -> None:
+    commit_a = _git(git_repo, "rev-parse", "HEAD").strip()
+    (git_repo / "app.py").write_text("value = 2\n", encoding="utf-8", newline="")
+    _git(git_repo, "add", "app.py")
+    _git(git_repo, "commit", "-m", "advance original")
+    commit_b = _git(git_repo, "rev-parse", "HEAD").strip()
+    before = capture_repo_snapshot(git_repo)
+
+    manager = WorktreeManager(tmp_path / "data")
+    result = manager.create(git_repo, "fixed-base", base_commit=commit_a)
+
+    assert result.ok is True
+    assert result.data is not None
+    assert result.data.base_commit == commit_a
+    assert _git(result.data.path, "rev-parse", "HEAD").strip() == commit_a
+    assert (result.data.path / "app.py").read_text(encoding="utf-8") == "value = 1\n"
+    assert _git(git_repo, "rev-parse", "HEAD").strip() == commit_b
+    assert capture_repo_snapshot(git_repo).data == before.data
+    assert manager.cleanup(result.data, approved=True).ok is True
+
+
+@pytest.mark.parametrize(
+    "base_factory",
+    [
+        lambda repo: _git(repo, "symbolic-ref", "--short", "HEAD").strip(),
+        lambda repo: _git(repo, "rev-parse", "--short", "HEAD").strip(),
+        lambda repo: "0" * 40,
+        lambda repo: _git(repo, "hash-object", "app.py").strip(),
+    ],
+    ids=["branch-name", "abbreviated-hash", "missing-object", "non-commit-object"],
+)
+def test_rejects_base_that_is_not_an_existing_full_commit_id(
+    git_repo: Path,
+    tmp_path: Path,
+    base_factory,
+) -> None:
+    result = WorktreeManager(tmp_path / "data").create(
+        git_repo,
+        "invalid-base",
+        base_commit=base_factory(git_repo),
+    )
+
+    assert result.ok is False
+    assert result.error_code == "invalid_base_commit"
+
+
+def test_existing_task_worktree_must_match_requested_base(
+    git_repo: Path,
+    tmp_path: Path,
+) -> None:
+    manager = WorktreeManager(tmp_path / "data")
+    commit_a = _git(git_repo, "rev-parse", "HEAD").strip()
+    first = manager.create(git_repo, "same-task", base_commit=commit_a)
+    assert first.ok is True
+    assert first.data is not None
+    (git_repo / "app.py").write_text("value = 2\n", encoding="utf-8", newline="")
+    _git(git_repo, "add", "app.py")
+    _git(git_repo, "commit", "-m", "advance original")
+    commit_b = _git(git_repo, "rev-parse", "HEAD").strip()
+
+    second = manager.create(git_repo, "same-task", base_commit=commit_b)
+
+    assert second.ok is False
+    assert second.error_code == "workspace_conflict"
+    assert _git(first.data.path, "rev-parse", "HEAD").strip() == commit_a
+    assert manager.cleanup(first.data, approved=True).ok is True
+
+
 def test_rejects_invalid_task_id(git_repo: Path, tmp_path: Path) -> None:
     result = WorktreeManager(tmp_path / "data").create(git_repo, "../escape")
 

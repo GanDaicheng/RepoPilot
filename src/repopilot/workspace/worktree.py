@@ -13,6 +13,7 @@ from repopilot.domain.results import ToolResult
 
 
 TASK_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
+FULL_OBJECT_ID_RE = re.compile(r"(?:[0-9A-Fa-f]{40}|[0-9A-Fa-f]{64})\Z")
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,7 +178,13 @@ class WorktreeManager:
         repo_hash = hashlib.sha256(str(repo).encode("utf-8")).hexdigest()[:12]
         return (self.data_dir / "worktrees" / repo_hash / task_id).resolve()
 
-    def create(self, repo_path: Path, task_id: str) -> ToolResult[WorktreeInfo]:
+    def create(
+        self,
+        repo_path: Path,
+        task_id: str,
+        *,
+        base_commit: str | None = None,
+    ) -> ToolResult[WorktreeInfo]:
         started = perf_counter()
         if TASK_ID_RE.fullmatch(task_id) is None:
             return ToolResult.failure(
@@ -217,6 +224,34 @@ class WorktreeManager:
                 duration_ms=_elapsed_ms(started),
             )
         snapshot = snapshot_result.data
+        target_base = snapshot.head
+        if base_commit is not None:
+            if FULL_OBJECT_ID_RE.fullmatch(base_commit) is None:
+                return ToolResult.failure(
+                    "invalid_base_commit",
+                    "The base commit must be a full hexadecimal object ID.",
+                    duration_ms=_elapsed_ms(started),
+                )
+            try:
+                resolved = _run_git(repo, "rev-parse", "--verify", f"{base_commit}^{{commit}}")
+            except (FileNotFoundError, OSError, UnicodeError):
+                return ToolResult.failure(
+                    "git_failed",
+                    "The requested base commit could not be resolved.",
+                    duration_ms=_elapsed_ms(started),
+                )
+            resolved_commit = resolved.stdout.strip()
+            if (
+                resolved.returncode != 0
+                or FULL_OBJECT_ID_RE.fullmatch(resolved_commit) is None
+                or resolved_commit.lower() != base_commit.lower()
+            ):
+                return ToolResult.failure(
+                    "invalid_base_commit",
+                    "The requested base is not an existing full commit object ID.",
+                    duration_ms=_elapsed_ms(started),
+                )
+            target_base = resolved_commit
         branch = f"repopilot/{task_id}"
         expected_path = self._expected_path(repo, task_id)
         if not expected_path.is_relative_to(data_root):
@@ -236,13 +271,13 @@ class WorktreeManager:
         existing = registered.get(expected_path)
         if existing is not None:
             if (
-                existing.get("HEAD") == snapshot.head
+                existing.get("HEAD") == target_base
                 and existing.get("branch") == f"refs/heads/{branch}"
             ):
                 info = WorktreeInfo(
                     task_id=task_id,
                     original_repo=repo,
-                    base_commit=snapshot.head,
+                    base_commit=target_base,
                     branch=branch,
                     path=expected_path,
                     original_snapshot=snapshot,
@@ -295,7 +330,7 @@ class WorktreeManager:
                 "-b",
                 branch,
                 str(expected_path),
-                snapshot.head,
+                target_base,
             )
         except (FileNotFoundError, OSError, UnicodeError):
             return ToolResult.failure(
@@ -313,7 +348,7 @@ class WorktreeManager:
         info = WorktreeInfo(
             task_id=task_id,
             original_repo=repo,
-            base_commit=snapshot.head,
+            base_commit=target_base,
             branch=branch,
             path=expected_path,
             original_snapshot=snapshot,
