@@ -20,6 +20,7 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+addopts = ["--import-mode=importlib"]
 markers = [
     "integration: tests that exercise multiple RepoPilot components",
     "docker: tests that require a running Docker daemon",
@@ -27,4 +28,3 @@ markers = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
