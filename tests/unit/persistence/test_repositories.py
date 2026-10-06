@@ -318,6 +318,51 @@ async def test_terminal_task_cancel_is_a_conflict(stores) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("target", "event_type"),
+    [
+        (TaskStatus.SUCCEEDED, EventType.TASK_SUCCEEDED),
+        (TaskStatus.FAILED, EventType.TASK_FAILED),
+        (TaskStatus.AWAITING_APPROVAL, EventType.APPROVAL_REQUIRED),
+    ],
+)
+async def test_persisted_cancel_atomically_wins_over_finalization(
+    stores, target: TaskStatus, event_type: EventType
+) -> None:
+    _, tasks, events, _ = stores
+    await tasks.create(task_input(), task_id="task-1", thread_id="thread-1")
+    await tasks.claim_next()
+    await tasks.request_cancel("task-1")
+
+    result = await tasks.transition(
+        "task-1",
+        target,
+        stage=target.value,
+        event_type=event_type,
+        payload={"unsafe": "result"},
+        dedupe_key=f"task-1:{target.value}",
+    )
+
+    assert result.status is TaskStatus.CANCELLED
+    assert result.current_stage == "cancelled"
+    emitted = await events.list_after("task-1", 0)
+    assert emitted[-1].event_type is EventType.TASK_CANCELLED
+    assert all(event.event_type is not event_type for event in emitted)
+
+
+@pytest.mark.asyncio
+async def test_base_commit_is_set_once(stores) -> None:
+    _, tasks, _, _ = stores
+    await tasks.create(task_input(), task_id="task-1", thread_id="thread-1")
+
+    first = await tasks.set_base_commit_once("task-1", "a" * 40)
+    repeated = await tasks.set_base_commit_once("task-1", "b" * 40)
+
+    assert first.base_commit == "a" * 40
+    assert repeated.base_commit == "a" * 40
+
+
+@pytest.mark.asyncio
 async def test_update_execution_accepts_only_whitelisted_fields(stores) -> None:
     _, tasks, _, _ = stores
     await tasks.create(task_input(), task_id="task-1", thread_id="thread-1")

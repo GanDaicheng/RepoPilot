@@ -45,6 +45,15 @@ class AppSettings:
     )
     poll_interval: float = 0.25
     environ: Mapping[str, str] = field(default_factory=lambda: dict(os.environ))
+    allowed_repo_roots: tuple[Path, ...] = field(
+        default_factory=lambda: tuple(
+            Path(item)
+            for item in os.environ.get(
+                "REPOPILOT_ALLOWED_REPO_ROOTS", str(Path.cwd())
+            ).split(os.pathsep)
+            if item
+        )
+    )
 
     @property
     def database_path(self) -> Path:
@@ -96,7 +105,7 @@ async def assemble_runtime(
     events = EventRepository(database)
     model_calls = ModelCallRepository(database)
     profiles = ModelProfileRegistry.from_env(settings.environ)
-    service = TaskService(tasks, profiles)
+    service = TaskService(tasks, profiles, settings.allowed_repo_roots)
 
     worker = overrides.worker
     if worker is None:

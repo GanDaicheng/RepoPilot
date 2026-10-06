@@ -23,6 +23,7 @@ from repopilot.models.types import ChatMessage
 
 OutputT = TypeVar("OutputT", bound=BaseModel)
 MAX_MODEL_ROUNDS = 4
+MAX_TOOL_RESULT_CHARS = 220_000
 
 
 class RepoAgentError(RuntimeError):
@@ -158,6 +159,11 @@ class RepoAgent:
                         "model_output_invalid",
                         "The model did not produce a final structured output within the round limit.",
                     )
+                if len(turn.tool_calls) != 1:
+                    raise RepoAgentError(
+                        "model_output_invalid",
+                        "The model must request exactly one read-only tool per round.",
+                    )
                 messages.append(
                     ChatMessage(
                         role="assistant",
@@ -165,26 +171,35 @@ class RepoAgent:
                         tool_calls=turn.tool_calls,
                     )
                 )
-                for call in turn.tool_calls:
-                    result = await asyncio.to_thread(self._toolbox.execute, worktree_root, call)
-                    messages.append(
-                        ChatMessage(
-                            role="tool",
-                            tool_call_id=call.id,
-                            content=json.dumps(
-                                {
-                                    "ok": result.ok,
-                                    "data": result.data,
-                                    "error_code": result.error_code,
-                                    "message": result.message,
-                                    "metadata": dict(result.metadata),
-                                },
-                                ensure_ascii=False,
-                                separators=(",", ":"),
-                                sort_keys=True,
-                            ),
-                        )
+                call = turn.tool_calls[0]
+                result = await asyncio.to_thread(self._toolbox.execute, worktree_root, call)
+                content = json.dumps(
+                    {
+                        "ok": result.ok,
+                        "data": result.data,
+                        "error_code": result.error_code,
+                        "message": result.message,
+                        "metadata": dict(result.metadata),
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+                if len(content) > MAX_TOOL_RESULT_CHARS:
+                    content = json.dumps(
+                        {
+                            "ok": False,
+                            "data": None,
+                            "error_code": "tool_output_too_large",
+                            "message": "The tool result exceeded the bounded model context.",
+                            "metadata": {"truncated": True},
+                        },
+                        separators=(",", ":"),
+                        sort_keys=True,
                     )
+                messages.append(
+                    ChatMessage(role="tool", tool_call_id=call.id, content=content)
+                )
                 continue
             final_content = turn.content
             break

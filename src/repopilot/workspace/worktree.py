@@ -67,6 +67,18 @@ def _repository_root(repo_path: Path) -> tuple[Path | None, str | None]:
         return None, "not_git_repository"
 
 
+def resolve_repository_root(repo_path: Path) -> ToolResult[Path]:
+    """Resolve an accessible path to its canonical Git top-level directory."""
+
+    root, error_code = _repository_root(repo_path)
+    if root is None:
+        return ToolResult.failure(
+            error_code or "not_git_repository",
+            "The requested path is not an accessible Git repository.",
+        )
+    return ToolResult.success(root)
+
+
 def capture_repo_snapshot(repo_path: Path) -> ToolResult[RepoSnapshot]:
     """Capture original checkout state needed to prove it was not changed."""
 

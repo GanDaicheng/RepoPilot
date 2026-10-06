@@ -43,7 +43,7 @@ python -m pip install -e ".[dev]"
 docker build -t repopilot-runner:m1 .
 ```
 
-运行数据目录必须位于目标仓库之外。默认使用用户目录下的 `.repopilot`；也可以先设置 `REPOPILOT_DATA_DIR`。项目不会自动读取 `.env` 文件，`.env.example` 只是安全的变量清单，请通过终端、进程管理器或密钥管理服务注入配置。
+运行数据目录必须位于目标仓库之外。默认使用用户目录下的 `.repopilot`；也可以先设置 `REPOPILOT_DATA_DIR`。服务只接受 `REPOPILOT_ALLOWED_REPO_ROOTS` 下的 Git 仓库；多个根目录使用系统路径分隔符（Windows 为 `;`，Unix 为 `:`），未设置时仅允许当前工作目录。项目不会自动读取 `.env` 文件，`.env.example` 只是安全的变量清单，请通过终端、进程管理器或密钥管理服务注入配置。
 
 ## 启动 API
 

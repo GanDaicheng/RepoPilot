@@ -10,7 +10,13 @@ MAX_SCAN_CHARS = 100_000
 _SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("private_key", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----")),
     ("bearer_token", re.compile(r"\bBearer\s+[A-Za-z0-9._-]{16,}", re.IGNORECASE)),
-    ("api_key", re.compile(r"\bsk-[A-Za-z0-9]{16,}\b", re.IGNORECASE)),
+    (
+        "api_key",
+        re.compile(
+            r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{16,}(?![A-Za-z0-9_-])",
+            re.IGNORECASE,
+        ),
+    ),
 )
 
 

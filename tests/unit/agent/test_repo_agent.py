@@ -190,6 +190,35 @@ async def test_repeated_tool_requests_stop_after_four_model_rounds(
 
 
 @pytest.mark.asyncio
+async def test_multiple_tool_calls_in_one_round_are_rejected(tmp_path: Path) -> None:
+    agent, transport, _ = make_agent(
+        {
+            "planning": [
+                model_turn(
+                    None,
+                    tool_calls=(
+                        ModelToolCall(id="call-1", name="list_files", arguments={}),
+                        ModelToolCall(id="call-2", name="list_files", arguments={}),
+                    ),
+                )
+            ]
+        }
+    )
+
+    with pytest.raises(RepoAgentError) as caught:
+        await agent.plan(
+            task_id="task-1",
+            profile=fake_profile(),
+            worktree_root=tmp_path,
+            user_request="Inspect safely",
+            repo_summary="Repo",
+        )
+
+    assert caught.value.error_code == "model_output_invalid"
+    assert len(transport.requests) == 1
+
+
+@pytest.mark.asyncio
 async def test_invalid_json_is_repaired_exactly_once(tmp_path: Path) -> None:
     agent, transport, sink = make_agent(
         {

@@ -45,8 +45,12 @@ class OpenAIChatTransport:
         self,
         *,
         client_factory: Callable[..., Any] = openai.AsyncOpenAI,
+        timeout_seconds: float = 30.0,
     ) -> None:
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be positive.")
         self._client_factory = client_factory
+        self._timeout_seconds = timeout_seconds
 
     async def complete(
         self,
@@ -62,6 +66,8 @@ class OpenAIChatTransport:
         client = self._client_factory(
             api_key=profile.api_key.get_secret_value(),
             base_url=profile.base_url,
+            max_retries=0,
+            timeout=self._timeout_seconds,
         )
         request: dict[str, object] = {
             "model": profile.model,

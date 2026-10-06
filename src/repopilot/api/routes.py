@@ -79,7 +79,11 @@ async def task_events(
 @router.get("/health", response_model=HealthResponse)
 async def health(request: Request, response: Response) -> HealthResponse:
     runtime = _runtime(request)
-    worker_state = "running" if runtime.worker.running else "stopped"
+    worker_state = (
+        "degraded"
+        if runtime.worker.running and getattr(runtime.worker, "last_error", None)
+        else "running" if runtime.worker.running else "stopped"
+    )
     if worker_state != "running":
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return HealthResponse(

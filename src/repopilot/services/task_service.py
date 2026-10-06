@@ -15,7 +15,7 @@ from repopilot.persistence.repositories import (
 )
 from repopilot.security.commands import evaluate_test_command
 from repopilot.security.secrets import find_secret_kind
-from repopilot.workspace.worktree import capture_repo_snapshot
+from repopilot.workspace.worktree import capture_repo_snapshot, resolve_repository_root
 
 
 MAX_REQUEST_CHARS = 20_000
@@ -33,9 +33,12 @@ class TaskService:
         self,
         task_repository: TaskRepository,
         profile_registry: ModelProfileRegistry,
+        allowed_repo_roots: tuple[Path, ...] | None = None,
     ) -> None:
         self.task_repository = task_repository
         self.profile_registry = profile_registry
+        roots = allowed_repo_roots or (Path.cwd(),)
+        self.allowed_repo_roots = tuple(root.resolve(strict=True) for root in roots)
 
     async def create_task(self, task_input: TaskInput) -> TaskRecord:
         request = task_input.user_request.strip()
@@ -76,6 +79,17 @@ class TaskService:
             raise TaskServiceError(
                 "invalid_repository", "The repository path is not accessible."
             ) from None
+        resolved = await asyncio.to_thread(resolve_repository_root, repo_path)
+        if not resolved.ok or resolved.data is None:
+            raise TaskServiceError(
+                "invalid_repository", "The path is not an accessible Git repository."
+            )
+        repo_path = resolved.data
+        if not any(repo_path.is_relative_to(root) for root in self.allowed_repo_roots):
+            raise TaskServiceError(
+                "repository_not_allowed",
+                "The repository is outside the configured allowed roots.",
+            )
         snapshot = await asyncio.to_thread(capture_repo_snapshot, repo_path)
         if not snapshot.ok:
             raise TaskServiceError(

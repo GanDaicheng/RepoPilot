@@ -61,6 +61,14 @@ def test_initial_patch_success_routes_to_tests() -> None:
     assert route_after_apply(state()) == "run_tests"
 
 
+def test_patch_application_failure_uses_bounded_code_retry() -> None:
+    retryable = state(error_type="patch_apply_failed", retry_count=0, max_retries=1)
+    exhausted = state(error_type="patch_apply_failed", retry_count=1, max_retries=1)
+
+    assert route_after_apply(retryable) == "schedule_retry"
+    assert route_after_apply(exhausted) == "failed_report"
+
+
 def test_test_failure_routes_to_failure_analysis() -> None:
     assert route_after_tests(state(current_stage="run_tests", test_exit_code=1)) == "inspect_failure"
 

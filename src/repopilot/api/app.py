@@ -5,8 +5,9 @@ from __future__ import annotations
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from repopilot.api.dependencies import (
     AppOverrides,
@@ -49,6 +50,27 @@ def create_app(
                 await runtime.worker.stop()
 
     app = FastAPI(title="RepoPilot", version="0.2.0", lifespan=lifespan)
+
+    @app.middleware("http")
+    async def reject_oversized_requests(request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length is not None:
+            try:
+                too_large = int(content_length) > 65_536
+            except ValueError:
+                too_large = True
+            if too_large:
+                return JSONResponse(
+                    status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                    content={
+                        "error": {
+                            "code": "request_too_large",
+                            "message": "The request body exceeds the supported size limit.",
+                        }
+                    },
+                )
+        return await call_next(request)
+
     app.include_router(router)
     app.add_exception_handler(TaskServiceError, task_service_error_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)

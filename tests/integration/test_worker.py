@@ -20,7 +20,7 @@ async def setup(tmp_path: Path) -> tuple[TaskService, TaskRepository]:
     database = SqliteDatabase(tmp_path / "worker.sqlite3")
     await database.initialize()
     tasks = TaskRepository(database)
-    return TaskService(tasks, ModelProfileRegistry.from_env({})), tasks
+    return TaskService(tasks, ModelProfileRegistry.from_env({}), (tmp_path,)), tasks
 
 
 def value(repo: Path) -> TaskInput:
@@ -178,4 +178,30 @@ async def test_start_and_stop_cleanly_end_single_worker_loop(tmp_path: Path) -> 
     await asyncio.sleep(0)
     await worker.stop()
 
+    assert worker.running is False
+
+
+@pytest.mark.asyncio
+async def test_worker_loop_recovers_after_transient_claim_failure() -> None:
+    recovered = asyncio.Event()
+
+    class FlakyRepository:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def claim_next(self):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("database temporarily unavailable")
+            recovered.set()
+            return None
+
+    repository = FlakyRepository()
+    worker = TaskWorker(repository, lambda task: Graph(), poll_interval=0.001)  # type: ignore[arg-type]
+
+    worker.start()
+    await asyncio.wait_for(recovered.wait(), timeout=1)
+    await worker.stop()
+
+    assert repository.calls >= 2
     assert worker.running is False

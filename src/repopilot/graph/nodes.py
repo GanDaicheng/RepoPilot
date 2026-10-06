@@ -37,6 +37,7 @@ class TaskRepositoryLike(Protocol):
     async def get(self, task_id: str) -> Any: ...
     async def update_execution(self, task_id: str, **fields: object) -> Any: ...
     async def transition(self, task_id: str, target: TaskStatus, **kwargs: object) -> Any: ...
+    async def set_base_commit_once(self, task_id: str, base_commit: str) -> Any: ...
 
 
 class EventRepositoryLike(Protocol):
@@ -119,7 +120,13 @@ class GraphNodes:
         if decision.outcome == "approval_required":
             return {
                 "current_stage": stage,
-                "pending_approval": {"action": "test_command", "argv": list(decision.argv[:16])},
+                "pending_approval": {
+                    "action": "test_command",
+                    "executable": decision.argv[0][:128] if decision.argv else "unknown",
+                    "argument_count": max(0, len(decision.argv) - 1),
+                    "category": "command_policy",
+                    "reason": "executable_not_allowlisted",
+                },
             }
         return {"current_stage": stage, "error_type": None, "error_message": None}
 
@@ -127,13 +134,16 @@ class GraphNodes:
         stage = "capture_base_commit"
         if await self._start(state, stage):
             return self._cancel_update(stage)
+        persisted = await self.deps.task_repository.get(state["task_id"])
+        if persisted is not None and persisted.base_commit is not None:
+            return {"base_commit": persisted.base_commit, "current_stage": stage}
         result = await asyncio.to_thread(self.deps.base_capture, Path(state["repo_path"]))
         if not result.ok or result.data is None:
             return self._failure(stage, "workspace_error", result.message)
-        await self.deps.task_repository.update_execution(
-            state["task_id"], base_commit=result.data.head
+        persisted = await self.deps.task_repository.set_base_commit_once(
+            state["task_id"], result.data.head
         )
-        return {"base_commit": result.data.head, "current_stage": stage}
+        return {"base_commit": persisted.base_commit, "current_stage": stage}
 
     async def create_worktree(self, state: RepoPilotState) -> dict[str, object]:
         stage = "create_worktree"
@@ -365,39 +375,64 @@ class GraphNodes:
             state["task_id"], EventType.RETRY_SCHEDULED, stage=stage,
             payload={"retry_count": retry}, dedupe_key=operation_key(state, stage),
         )
-        return {"retry_count": retry, "current_stage": stage, "error_type": None, "error_message": None}
+        analysis = state["failure_analysis"]
+        if state["error_type"] in {"patch_invalid", "patch_apply_failed"}:
+            analysis = {
+                "root_cause": state["error_message"] or "The proposed patch could not be applied.",
+                "fixable": True,
+                "evidence": [state["error_type"]],
+                "strategy": "Inspect the target files and generate a fresh patch against their current contents.",
+                "suggested_files": [],
+            }
+        return {
+            "retry_count": retry,
+            "current_stage": stage,
+            "failure_analysis": analysis,
+            "error_type": None,
+            "error_message": None,
+        }
 
     async def awaiting_approval(self, state: RepoPilotState) -> dict[str, object]:
         stage = "awaiting_approval"
         payload = dict(state["pending_approval"] or {"action": "unknown"})
-        await self.deps.task_repository.transition(
+        task = await self.deps.task_repository.transition(
             state["task_id"], TaskStatus.AWAITING_APPROVAL,
             stage=stage, event_type=EventType.APPROVAL_REQUIRED,
             payload=payload, dedupe_key=operation_key(state, stage),
         )
+        if task.status is TaskStatus.CANCELLED:
+            return self._cancel_update("cancelled")
         interrupt(payload)
         return {"current_stage": stage}
 
     async def success_report(self, state: RepoPilotState) -> dict[str, object]:
-        await self.deps.task_repository.transition(
+        task = await self.deps.task_repository.transition(
             state["task_id"], TaskStatus.SUCCEEDED, stage="succeeded",
             event_type=EventType.TASK_SUCCEEDED,
             payload={"changed_files": state["changed_files"][:50], "retry_count": state["retry_count"]},
             dedupe_key=f"{state['task_id']}:succeeded",
         )
+        if task.status is TaskStatus.CANCELLED:
+            return self._cancel_update("cancelled")
         return {"current_stage": "succeeded"}
 
     async def failed_report(self, state: RepoPilotState) -> dict[str, object]:
+        exhausted_fixable = bool(
+            (state["failure_analysis"] or {}).get("fixable")
+            or (state["review_decision"] or {}).get("critical_findings")
+        ) and state["retry_count"] >= state["max_retries"]
         error_type = state["error_type"] or (
-            "retry_exhausted" if state["retry_count"] >= state["max_retries"] else "test_failed"
+            "retry_exhausted" if exhausted_fixable else "test_failed"
         )
         message = state["error_message"] or "The task could not produce an approved passing change."
-        await self.deps.task_repository.transition(
+        task = await self.deps.task_repository.transition(
             state["task_id"], TaskStatus.FAILED, stage="failed",
             event_type=EventType.TASK_FAILED,
             payload={"error_type": error_type}, dedupe_key=f"{state['task_id']}:failed",
             error_type=error_type, error_message=message,
         )
+        if task.status is TaskStatus.CANCELLED:
+            return self._cancel_update("cancelled")
         return {"current_stage": "failed", "error_type": error_type, "error_message": message}
 
     async def cancelled_report(self, state: RepoPilotState) -> dict[str, object]:

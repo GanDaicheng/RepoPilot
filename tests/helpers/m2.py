@@ -146,7 +146,12 @@ def make_app(
     test_runner=None,
 ):
     return create_app(
-        AppSettings(data_dir=tmp_path / "data", poll_interval=0.01, environ={}),
+        AppSettings(
+            data_dir=tmp_path / "data",
+            poll_interval=0.01,
+            environ={},
+            allowed_repo_roots=(tmp_path,),
+        ),
         overrides=AppOverrides(
             transports={ModelProvider.FAKE: transport},
             test_runner=test_runner,

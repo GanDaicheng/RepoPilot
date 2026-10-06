@@ -45,7 +45,12 @@ async def test_restart_reconciles_written_patch_and_resumes_same_checkpoint(
 ) -> None:
     repo = copy_calculator_repo(tmp_path / "original")
     original = capture_repo_snapshot(repo).data
-    settings = AppSettings(data_dir=tmp_path / "data", poll_interval=0.01, environ={})
+    settings = AppSettings(
+        data_dir=tmp_path / "data",
+        poll_interval=0.01,
+        environ={},
+        allowed_repo_roots=(tmp_path,),
+    )
     settings.data_dir.mkdir(parents=True)
     database = SqliteDatabase(settings.database_path)
     await database.initialize()
@@ -53,7 +58,7 @@ async def test_restart_reconciles_written_patch_and_resumes_same_checkpoint(
     events = EventRepository(database)
     calls = ModelCallRepository(database)
     profiles = ModelProfileRegistry.from_env({})
-    service = TaskService(tasks, profiles)
+    service = TaskService(tasks, profiles, (tmp_path,))
     task = await service.create_task(
         TaskInput(repo, "Raise ValueError for zero", "pytest -q", "fake", 1)
     )

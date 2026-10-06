@@ -10,13 +10,14 @@ from repopilot.models.profiles import ModelProfileRegistry
 from repopilot.persistence.database import SqliteDatabase
 from repopilot.persistence.repositories import EventRepository, TaskRepository
 from repopilot.services.task_service import TaskService, TaskServiceError
+from tests.helpers.git import init_repo
 
 
 async def make_service(tmp_path: Path) -> tuple[TaskService, TaskRepository]:
     database = SqliteDatabase(tmp_path / "service.sqlite3")
     await database.initialize()
     tasks = TaskRepository(database)
-    return TaskService(tasks, ModelProfileRegistry.from_env({})), tasks
+    return TaskService(tasks, ModelProfileRegistry.from_env({}), (tmp_path,)), tasks
 
 
 def task_input(repo: Path, **overrides: object) -> TaskInput:
@@ -90,6 +91,25 @@ async def test_rejects_non_repository_but_accepts_command_requiring_later_approv
 
     assert caught.value.error_code == "invalid_repository"
     assert approved_later.status is TaskStatus.QUEUED
+
+
+@pytest.mark.asyncio
+async def test_rejects_repository_outside_configured_roots_before_persistence(
+    tmp_path: Path,
+) -> None:
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    outside = init_repo(tmp_path / "outside", {"app.py": "value = 1\n"})
+    database = SqliteDatabase(tmp_path / "roots.sqlite3")
+    await database.initialize()
+    tasks = TaskRepository(database)
+    service = TaskService(tasks, ModelProfileRegistry.from_env({}), (allowed,))
+
+    with pytest.raises(TaskServiceError) as caught:
+        await service.create_task(task_input(outside))
+
+    assert caught.value.error_code == "repository_not_allowed"
+    assert await tasks.claim_next() is None
 
 
 @pytest.mark.asyncio

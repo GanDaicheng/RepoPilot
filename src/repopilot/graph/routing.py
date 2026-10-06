@@ -21,7 +21,19 @@ def _override(state: RepoPilotState) -> str | None:
 
 
 def route_after_apply(state: RepoPilotState) -> str:
-    return _override(state) or "run_tests"
+    if state["current_stage"] in TERMINAL_STAGES:
+        return "end"
+    if state["cancel_requested"]:
+        return "cancelled_report"
+    if state["pending_approval"] is not None:
+        return "awaiting_approval"
+    if state["error_type"] in {"patch_invalid", "patch_apply_failed"}:
+        if state["retry_count"] < state["max_retries"]:
+            return "schedule_retry"
+        return "failed_report"
+    if state["error_type"] is not None:
+        return "failed_report"
+    return "run_tests"
 
 
 def route_after_validate(state: RepoPilotState) -> str:

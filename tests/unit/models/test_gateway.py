@@ -177,6 +177,8 @@ async def test_openai_transport_builds_client_and_translates_messages_and_tools(
     assert factory_args == {
         "api_key": "provider-test-value",
         "base_url": "https://models.example.test/v1",
+        "max_retries": 0,
+        "timeout": 30.0,
     }
     assert client.closed is True
     assert client.chat.completions.kwargs == {

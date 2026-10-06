@@ -9,6 +9,8 @@ from repopilot.security.secrets import find_secret_kind
     ("value", "expected"),
     [
         ("use " + "sk-" + "1234567890abcdef1234567890abcdef", "api_key"),
+        ("use " + "sk-" + "proj-1234567890abcdef", "api_key"),
+        ("use " + "sk-" + "live_key-1234567890abcdef", "api_key"),
         (
             "Authorization: " + "Bearer " + "abcdefghijklmnopqrstuvwxyz.123",
             "bearer_token",

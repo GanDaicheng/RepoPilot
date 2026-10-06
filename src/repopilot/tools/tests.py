@@ -191,6 +191,8 @@ class DockerTestRunner:
             "10001:10001",
             "--tmpfs",
             f"/tmp:rw,noexec,nosuid,size={config.tmpfs_size}",
+            "--env",
+            "PYTHONPYCACHEPREFIX=/tmp/pycache",
             "--mount",
             mount,
             "--workdir",

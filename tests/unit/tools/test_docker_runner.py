@@ -49,7 +49,8 @@ def test_runner_uses_all_required_hardening_flags(
     assert captured.count("--mount") == 1
     assert "target=/workspace" in captured[captured.index("--mount") + 1]
     assert "-e" not in captured
-    assert "--env" not in captured
+    assert captured.count("--env") == 1
+    assert captured[captured.index("--env") + 1] == "PYTHONPYCACHEPREFIX=/tmp/pycache"
 
 
 def test_runner_passes_test_as_argv_not_shell(monkeypatch, tmp_path: Path) -> None:

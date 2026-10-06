@@ -295,6 +295,18 @@ class TaskRepository:
                 task = await _select_task(connection, task_id)
                 if task is None:
                     raise TaskNotFoundError(f"Task {task_id!r} does not exist.")
+                if task.cancel_requested and target in {
+                    TaskStatus.SUCCEEDED,
+                    TaskStatus.FAILED,
+                    TaskStatus.AWAITING_APPROVAL,
+                }:
+                    target = TaskStatus.CANCELLED
+                    stage = TaskStatus.CANCELLED.value
+                    event_type = EventType.TASK_CANCELLED
+                    payload = {"status": TaskStatus.CANCELLED.value}
+                    dedupe_key = f"{task_id}:cancelled"
+                    error_type = "cancelled"
+                    error_message = "The task was cancelled."
                 existing = await _select_event_by_dedupe(
                     connection, task_id, dedupe_key
                 )
@@ -341,6 +353,31 @@ class TaskRepository:
                 raise
         if updated is None:
             raise RepositoryError("The transitioned task could not be read back.")
+        return updated
+
+    async def set_base_commit_once(self, task_id: str, base_commit: str) -> TaskRecord:
+        if not base_commit or len(base_commit) > 128:
+            raise InvalidUpdateFieldError("base_commit is invalid.")
+        async with self.database.connection() as connection:
+            try:
+                await connection.execute("BEGIN IMMEDIATE")
+                task = await _select_task(connection, task_id)
+                if task is None:
+                    raise TaskNotFoundError(f"Task {task_id!r} does not exist.")
+                if task.base_commit is None:
+                    now = _now()
+                    await connection.execute(
+                        "UPDATE tasks SET base_commit = ?, updated_at = ? "
+                        "WHERE id = ? AND base_commit IS NULL",
+                        (base_commit, _serialize_time(now), task_id),
+                    )
+                updated = await _select_task(connection, task_id)
+                await connection.commit()
+            except BaseException:
+                await connection.rollback()
+                raise
+        if updated is None:
+            raise RepositoryError("The updated task could not be read back.")
         return updated
 
     async def request_cancel(self, task_id: str) -> TaskRecord:

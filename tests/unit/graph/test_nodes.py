@@ -20,22 +20,35 @@ from repopilot.workspace.worktree import RepoSnapshot, WorktreeInfo
 @dataclass
 class TaskView:
     cancel_requested: bool = False
+    base_commit: str | None = None
 
 
 class TaskRepo:
-    def __init__(self, cancel_sequence: list[bool] | None = None) -> None:
+    def __init__(
+        self,
+        cancel_sequence: list[bool] | None = None,
+        persisted_base_commit: str | None = None,
+    ) -> None:
         self.cancel_sequence = list(cancel_sequence or [False] * 20)
         self.updates: list[dict[str, object]] = []
+        self.persisted_base_commit = persisted_base_commit
 
     async def get(self, task_id: str) -> TaskView:
         del task_id
         value = self.cancel_sequence.pop(0) if self.cancel_sequence else False
-        return TaskView(value)
+        return TaskView(value, self.persisted_base_commit)
 
     async def update_execution(self, task_id: str, **fields: object) -> TaskView:
         del task_id
         self.updates.append(fields)
         return TaskView()
+
+    async def set_base_commit_once(self, task_id: str, base_commit: str) -> TaskView:
+        del task_id
+        self.updates.append({"base_commit": base_commit})
+        if self.persisted_base_commit is None:
+            self.persisted_base_commit = base_commit
+        return TaskView(base_commit=self.persisted_base_commit)
 
 
 class Events:
@@ -144,6 +157,27 @@ async def test_base_is_captured_before_exact_worktree_creation(tmp_path: Path) -
     assert captured == {"base_commit": "a" * 40, "current_stage": "capture_base_commit"}
     assert created["worktree_path"] == str(tmp_path / "repo")
     assert dependencies.worktree_manager.calls == ["a" * 40]
+
+
+@pytest.mark.asyncio
+async def test_capture_reuses_persisted_base_after_checkpoint_gap(tmp_path: Path) -> None:
+    task_repo = TaskRepo(persisted_base_commit="a" * 40)
+    dependencies = deps(tmp_path, task_repo=task_repo)
+    dependencies.base_capture = lambda root: (_ for _ in ()).throw(
+        AssertionError("HEAD must not be recaptured")
+    )
+    state = initial_state(
+        task_id="task-1",
+        thread_id="11111111-1111-4111-8111-111111111111",
+        repo_path=str(tmp_path / "repo"),
+        user_request="Change",
+        test_command="pytest -q",
+        max_retries=1,
+    )
+
+    update = await GraphNodes(dependencies).capture_base_commit(state)
+
+    assert update["base_commit"] == "a" * 40
 
 
 @pytest.mark.asyncio
@@ -265,4 +299,37 @@ async def test_schedule_retry_is_only_code_retry_increment(tmp_path: Path) -> No
     update = await nodes.schedule_retry(state)
 
     assert update["retry_count"] == 1
-    assert set(update) == {"retry_count", "current_stage", "error_type", "error_message"}
+    assert set(update) == {
+        "retry_count",
+        "current_stage",
+        "failure_analysis",
+        "error_type",
+        "error_message",
+    }
+
+
+@pytest.mark.asyncio
+async def test_approval_payload_describes_command_without_raw_arguments(
+    tmp_path: Path,
+) -> None:
+    nodes = GraphNodes(deps(tmp_path))
+    state = initial_state(
+        task_id="task-1",
+        thread_id="11111111-1111-4111-8111-111111111111",
+        repo_path=str(tmp_path / "repo"),
+        user_request="Change",
+        test_command="npm test -- private-argument",
+        max_retries=1,
+    )
+
+    update = await nodes.validate_request(state)
+
+    approval = update["pending_approval"]
+    assert approval == {
+        "action": "test_command",
+        "executable": "npm",
+        "argument_count": 3,
+        "category": "command_policy",
+        "reason": "executable_not_allowlisted",
+    }
+    assert "private-argument" not in str(approval)

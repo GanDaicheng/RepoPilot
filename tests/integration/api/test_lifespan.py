@@ -38,7 +38,7 @@ def test_lifespan_initializes_resources_once_and_closes_checkpoint(tmp_path: Pat
         observed.append("closed")
 
     app = create_app(
-        AppSettings(data_dir=tmp_path / "data", environ={}),
+        AppSettings(data_dir=tmp_path / "data", environ={}, allowed_repo_roots=(tmp_path,)),
         overrides=AppOverrides(worker=worker, checkpointer_factory=saver_factory),
     )
 

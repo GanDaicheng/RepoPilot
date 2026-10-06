@@ -20,7 +20,12 @@ class IdleWorker:
 
 
 def settings(tmp_path: Path) -> AppSettings:
-    return AppSettings(data_dir=tmp_path / "data", poll_interval=0.01, environ={})
+    return AppSettings(
+        data_dir=tmp_path / "data",
+        poll_interval=0.01,
+        environ={},
+        allowed_repo_roots=(tmp_path,),
+    )
 
 
 def payload(repo: Path, **overrides: object) -> dict[str, object]:
@@ -82,6 +87,7 @@ def test_invalid_inputs_map_to_422_without_persisting_secret(
         payload(git_repo, model_profile="unknown"),
         payload(git_repo, max_retries=6),
         payload(git_repo, user_request="use " + "sk-" + "x" * 20),
+        payload(git_repo, user_request="use " + "sk-" + "proj-" + "x" * 20),
     ]
     with TestClient(app) as client:
         for item in cases:
@@ -91,6 +97,25 @@ def test_invalid_inputs_map_to_422_without_persisting_secret(
             business_table_counts, app.state.runtime.database
         )
         assert counts == {"tasks": 0, "events": 0, "model_calls": 0}
+
+
+def test_request_body_and_field_lengths_are_bounded(
+    git_repo: Path, tmp_path: Path
+) -> None:
+    app = create_app(settings(tmp_path), overrides=AppOverrides(worker=IdleWorker()))
+    with TestClient(app) as client:
+        oversized = client.post(
+            "/tasks",
+            content=b"x" * 65_537,
+            headers={"content-type": "application/json"},
+        )
+        bounded_field = client.post(
+            "/tasks", json=payload(git_repo, test_command="x" * 2_001)
+        )
+
+    assert oversized.status_code == 413
+    assert oversized.json()["error"]["code"] == "request_too_large"
+    assert bounded_field.status_code == 422
 
 
 def test_unallowlisted_executable_is_accepted_then_safely_paused(
@@ -123,3 +148,15 @@ def test_health_is_readiness_only_and_does_not_probe_paid_models(tmp_path: Path)
         "database": "ready",
         "worker": "running",
     }
+
+
+def test_health_reports_worker_persistence_degradation(tmp_path: Path) -> None:
+    worker = IdleWorker()
+    worker.last_error = "persistence_unavailable"  # type: ignore[attr-defined]
+    app = create_app(settings(tmp_path), overrides=AppOverrides(worker=worker))
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 503
+    assert response.json()["worker"] == "degraded"

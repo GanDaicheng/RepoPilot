@@ -62,7 +62,7 @@ def test_endpoint_serializes_ordered_events_and_closes_on_terminal(
     git_repo: Path, tmp_path: Path
 ) -> None:
     app = create_app(
-        AppSettings(data_dir=tmp_path / "data", environ={}),
+        AppSettings(data_dir=tmp_path / "data", environ={}, allowed_repo_roots=(tmp_path,)),
         overrides=AppOverrides(worker=IdleWorker()),
     )
     with TestClient(app) as client:
@@ -84,7 +84,7 @@ def test_last_event_id_and_foreign_global_cursor_never_reveal_other_task(
     git_repo: Path, tmp_path: Path
 ) -> None:
     app = create_app(
-        AppSettings(data_dir=tmp_path / "data", environ={}),
+        AppSettings(data_dir=tmp_path / "data", environ={}, allowed_repo_roots=(tmp_path,)),
         overrides=AppOverrides(worker=IdleWorker()),
     )
     with TestClient(app) as client:
@@ -115,7 +115,7 @@ def test_invalid_last_event_id_is_422(
     git_repo: Path, tmp_path: Path, value: str
 ) -> None:
     app = create_app(
-        AppSettings(data_dir=tmp_path / "data", environ={}),
+        AppSettings(data_dir=tmp_path / "data", environ={}, allowed_repo_roots=(tmp_path,)),
         overrides=AppOverrides(worker=IdleWorker()),
     )
     with TestClient(app) as client:
@@ -128,7 +128,7 @@ def test_invalid_last_event_id_is_422(
 
 def test_missing_task_is_404(tmp_path: Path) -> None:
     app = create_app(
-        AppSettings(data_dir=tmp_path / "data", environ={}),
+        AppSettings(data_dir=tmp_path / "data", environ={}, allowed_repo_roots=(tmp_path,)),
         overrides=AppOverrides(worker=IdleWorker()),
     )
     with TestClient(app) as client:
@@ -204,7 +204,7 @@ async def test_concurrent_sqlite_write_becomes_visible_to_open_stream(
     await database.initialize()
     tasks = TaskRepository(database)
     events = EventRepository(database)
-    service = TaskService(tasks, ModelProfileRegistry.from_env({}))
+    service = TaskService(tasks, ModelProfileRegistry.from_env({}), (tmp_path,))
     task = await service.create_task(TaskInput(repo, "Change", "pytest -q", "fake", 1))
     created = (await events.list_after(task.id, 0))[0]
     stream = event_stream(

@@ -25,20 +25,27 @@ pytestmark = pytest.mark.integration
 class TaskRepo:
     def __init__(self) -> None:
         self.stage = "running"
+        self.base_commit: str | None = None
 
     async def get(self, task_id: str):
         del task_id
-        return SimpleNamespace(cancel_requested=False)
+        return SimpleNamespace(cancel_requested=False, base_commit=self.base_commit)
 
     async def update_execution(self, task_id: str, **fields: object):
         del task_id
         self.stage = str(fields.get("current_stage", self.stage))
-        return SimpleNamespace(cancel_requested=False)
+        return SimpleNamespace(cancel_requested=False, base_commit=self.base_commit)
+
+    async def set_base_commit_once(self, task_id: str, base_commit: str):
+        del task_id
+        if self.base_commit is None:
+            self.base_commit = base_commit
+        return SimpleNamespace(cancel_requested=False, base_commit=self.base_commit)
 
     async def transition(self, task_id, target, **kwargs):
-        del task_id, target
+        del task_id
         self.stage = str(kwargs["stage"])
-        return SimpleNamespace(cancel_requested=False)
+        return SimpleNamespace(cancel_requested=False, status=target)
 
 
 class DedupeEvents:

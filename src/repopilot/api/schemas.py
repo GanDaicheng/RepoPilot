@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from repopilot.domain.tasks import TaskInput, TaskRecord, TaskStatus
 
@@ -13,15 +14,15 @@ from repopilot.domain.tasks import TaskInput, TaskRecord, TaskStatus
 class TaskCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    repo_path: Path
-    user_request: str
-    test_command: str
-    model_profile: str = "fake"
-    max_retries: int = 2
+    repo_path: Annotated[str, StringConstraints(min_length=1, max_length=4_096)]
+    user_request: Annotated[str, StringConstraints(min_length=1, max_length=20_000)]
+    test_command: Annotated[str, StringConstraints(min_length=1, max_length=2_000)]
+    model_profile: Annotated[str, StringConstraints(min_length=1, max_length=64)] = "fake"
+    max_retries: int = Field(default=2, ge=0, le=5)
 
     def to_domain(self) -> TaskInput:
         return TaskInput(
-            repo_path=self.repo_path,
+            repo_path=Path(self.repo_path),
             user_request=self.user_request,
             test_command=self.test_command,
             model_profile=self.model_profile,

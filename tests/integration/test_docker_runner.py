@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -24,7 +25,9 @@ def test_real_container_runs_fixture_tests_without_network(tmp_path: Path) -> No
     assert passing.data is not None
     assert passing.data.exit_code == 0
 
+    original_stat = fixture.stat()
     fixture.write_text("def test_value():\n    assert 2 + 2 == 5\n", encoding="utf-8")
+    os.utime(fixture, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
     failing = runner.run(tmp_path, "pytest -q")
 
     assert failing.ok is True

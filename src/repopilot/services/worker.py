@@ -35,6 +35,7 @@ class TaskWorker:
         self._stop_event = asyncio.Event()
         self._runner_task: asyncio.Task[None] | None = None
         self._run_lock = asyncio.Lock()
+        self.last_error: str | None = None
 
     @property
     def running(self) -> bool:
@@ -56,13 +57,23 @@ class TaskWorker:
         self._runner_task = None
 
     async def run_forever(self) -> None:
+        backoff = self.poll_interval
         while not self._stop_event.is_set():
-            processed = await self.run_once()
+            try:
+                processed = await self.run_once()
+                self.last_error = None
+                backoff = self.poll_interval
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.last_error = "persistence_unavailable"
+                processed = False
+                backoff = min(max(backoff * 2, self.poll_interval), 5.0)
             if processed:
                 continue
             try:
                 await asyncio.wait_for(
-                    self._stop_event.wait(), timeout=self.poll_interval
+                    self._stop_event.wait(), timeout=backoff
                 )
             except TimeoutError:
                 pass
