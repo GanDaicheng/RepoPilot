@@ -35,7 +35,14 @@ CheckpointerFactory = Callable[[str], AsyncContextManager[Any]]
 
 @dataclass(frozen=True, slots=True)
 class AppSettings:
-    data_dir: Path = Path(".repopilot-data")
+    data_dir: Path = field(
+        default_factory=lambda: Path(
+            os.environ.get(
+                "REPOPILOT_DATA_DIR",
+                str(Path.home() / ".repopilot"),
+            )
+        )
+    )
     poll_interval: float = 0.25
     environ: Mapping[str, str] = field(default_factory=lambda: dict(os.environ))
 
