@@ -110,7 +110,7 @@ def _run_git_apply(
     check_only: bool,
     reverse: bool = False,
 ) -> subprocess.CompletedProcess[bytes]:
-    command = ["git", "apply"]
+    command = ["git", "apply", "--ignore-space-change"]
     if reverse:
         command.append("--reverse")
     if check_only:

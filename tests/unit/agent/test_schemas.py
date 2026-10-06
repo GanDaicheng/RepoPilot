@@ -71,6 +71,18 @@ def test_patch_proposal_enforces_byte_limit() -> None:
         )
 
 
+def test_patch_proposal_preserves_diff_terminal_newline() -> None:
+    patch = "--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-old\n+new\n"
+
+    proposal = PatchProposal(
+        patch_text=patch,
+        summary="Change",
+        expected_files=("a.py",),
+    )
+
+    assert proposal.patch_text == patch
+
+
 def test_failure_analysis_requires_strategy_only_when_fixable() -> None:
     fixable = FailureAnalysis(
         root_cause="Missing guard",

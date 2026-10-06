@@ -102,6 +102,15 @@ def test_apply_patch_reconciliation_rejects_unrelated_content(git_repo: Path) ->
     assert result.error_code == "patch_check_failed"
 
 
+def test_apply_patch_matches_crlf_checkout_context(git_repo: Path) -> None:
+    (git_repo / "app.py").write_bytes(b"value = 1\r\n")
+
+    result = apply_patch(git_repo, MODIFY_PATCH)
+
+    assert result.ok is True
+    assert (git_repo / "app.py").read_text(encoding="utf-8") == "value = 2\n"
+
+
 def test_apply_patch_creates_new_file(git_repo: Path) -> None:
     result = apply_patch(git_repo, CREATE_PATCH)
 

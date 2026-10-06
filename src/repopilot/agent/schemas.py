@@ -48,6 +48,8 @@ class ChangePlan(_StrictOutput):
 
 
 class PatchProposal(_StrictOutput):
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=False)
+
     patch_text: str
     summary: NonEmptyText
     expected_files: tuple[RelativePath, ...] = Field(min_length=1)

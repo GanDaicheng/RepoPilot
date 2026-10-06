@@ -205,6 +205,31 @@ async def test_side_effect_rechecks_persisted_cancellation_immediately_before_ca
 
 
 @pytest.mark.asyncio
+async def test_test_node_observes_cancellation_that_arrives_during_runner(tmp_path: Path) -> None:
+    task_repo = TaskRepo([False, False, True])
+    dependencies = deps(tmp_path, task_repo=task_repo)
+    nodes = GraphNodes(dependencies)
+    state = initial_state(
+        task_id="task-1",
+        thread_id="11111111-1111-4111-8111-111111111111",
+        repo_path=str(tmp_path / "repo"),
+        user_request="Change",
+        test_command="pytest -q",
+        max_retries=2,
+    )
+    state.update(worktree_path=str(tmp_path / "repo"))
+
+    update = await nodes.run_tests(state)
+
+    assert update["cancel_requested"] is True
+    assert dependencies.test_runner.calls == 1
+    assert not any(
+        item[0] is EventType.TEST_COMPLETED
+        for item in dependencies.event_repository.items
+    )
+
+
+@pytest.mark.asyncio
 async def test_model_stage_cannot_replace_identity_or_retry_configuration(tmp_path: Path) -> None:
     nodes = GraphNodes(deps(tmp_path))
     state = initial_state(

@@ -292,6 +292,8 @@ class GraphNodes:
             Path(state["worktree_path"] or ""),
             state["test_command"],
         )
+        if await self._cancelled(state):
+            return self._cancel_update(stage)
         if not result.ok:
             if result.error_code == "approval_required":
                 return {
