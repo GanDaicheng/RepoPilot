@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request, Response, status
+from typing import Annotated
+
+from fastapi import APIRouter, Header, Request, Response, status
+from fastapi.responses import StreamingResponse
 
 from repopilot.api.dependencies import AppRuntime
 from repopilot.api.schemas import HealthResponse, TaskCreateRequest, TaskResponse
+from repopilot.api.sse import event_stream, parse_last_event_id
+from repopilot.services.task_service import TaskServiceError
 
 
 router = APIRouter()
@@ -35,6 +40,40 @@ async def get_task(task_id: str, request: Request) -> TaskResponse:
 async def cancel_task(task_id: str, request: Request) -> TaskResponse:
     task = await _runtime(request).task_service.cancel_task(task_id)
     return TaskResponse.from_record(task)
+
+
+@router.get("/tasks/{task_id}/events")
+async def task_events(
+    task_id: str,
+    request: Request,
+    last_event_id: Annotated[
+        str | None,
+        Header(alias="Last-Event-ID"),
+    ] = None,
+) -> StreamingResponse:
+    runtime = _runtime(request)
+    await runtime.task_service.get_task(task_id)
+    try:
+        cursor = parse_last_event_id(last_event_id)
+    except ValueError:
+        raise TaskServiceError(
+            "validation_error",
+            "Last-Event-ID must be a supported non-negative integer.",
+        ) from None
+    return StreamingResponse(
+        event_stream(
+            task_id,
+            cursor,
+            runtime.event_repository,
+            task_repository=runtime.task_repository,
+            is_disconnected=request.is_disconnected,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/health", response_model=HealthResponse)
