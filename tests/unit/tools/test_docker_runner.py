@@ -186,3 +186,21 @@ def test_unavailable_daemon_returns_docker_unavailable(monkeypatch) -> None:
 
     assert result.ok is False
     assert result.error_code == "docker_unavailable"
+
+
+def test_available_daemon_accepts_docker_aligned_version_output(monkeypatch) -> None:
+    monkeypatch.setattr(
+        tests_module.subprocess,
+        "run",
+        lambda argv, **kwargs: subprocess.CompletedProcess(
+            argv,
+            0,
+            "29.8.0              29.8.0\n",
+            "",
+        ),
+    )
+
+    result = DockerTestRunner().is_available()
+
+    assert result.ok is True
+    assert result.data == DockerAvailability("29.8.0", "29.8.0")

@@ -97,7 +97,7 @@ class DockerTestRunner:
                 duration_ms=max(0, int((perf_counter() - started) * 1000)),
             )
 
-        parts = completed.stdout.strip().split("\t", 1)
+        parts = completed.stdout.strip().split(maxsplit=1)
         if completed.returncode != 0 or len(parts) != 2 or not all(parts):
             return ToolResult.failure(
                 "docker_unavailable",
