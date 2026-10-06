@@ -370,17 +370,18 @@ async def test_update_execution_accepts_only_whitelisted_fields(stores) -> None:
     updated = await tasks.update_execution(
         "task-1",
         current_stage="planning",
-        base_commit="a" * 40,
         worktree_path=Path("C:/managed/task-1"),
         retry_count=1,
     )
 
     assert updated.current_stage == "planning"
-    assert updated.base_commit == "a" * 40
+    assert updated.base_commit is None
     assert updated.worktree_path == Path("C:/managed/task-1")
     assert updated.retry_count == 1
     with pytest.raises(InvalidUpdateFieldError):
         await tasks.update_execution("task-1", status="succeeded")
+    with pytest.raises(InvalidUpdateFieldError):
+        await tasks.update_execution("task-1", base_commit="a" * 40)
 
 
 @pytest.mark.asyncio

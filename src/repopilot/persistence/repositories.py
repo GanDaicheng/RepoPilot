@@ -429,7 +429,6 @@ class TaskRepository:
     async def update_execution(self, task_id: str, **bounded_fields: object) -> TaskRecord:
         allowed = {
             "current_stage",
-            "base_commit",
             "worktree_path",
             "retry_count",
             "error_type",
@@ -449,7 +448,6 @@ class TaskRepository:
             raise InvalidUpdateFieldError("retry_count must be a non-negative integer.")
         for field, limit in (
             ("current_stage", 128),
-            ("base_commit", 128),
             ("error_type", 128),
             ("error_message", 4_096),
         ):

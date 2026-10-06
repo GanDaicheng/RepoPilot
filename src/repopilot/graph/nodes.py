@@ -270,11 +270,13 @@ class GraphNodes:
                         "paths": list(result.metadata.get("paths", ()))[:20],
                     },
                 }
-            error_type = (
-                "patch_invalid"
-                if result.error_code in {"invalid_patch", "workspace_boundary_violation"}
-                else "patch_apply_failed"
-            )
+            error_type = {
+                "invalid_patch": "patch_invalid",
+                "patch_check_failed": "patch_apply_failed",
+                "patch_apply_failed": "patch_apply_failed",
+                "workspace_boundary_violation": "workspace_error",
+                "tool_unavailable": "tool_error",
+            }.get(result.error_code or "", "tool_error")
             return self._failure(stage, error_type, result.message)
         data = result.data
         assert data is not None
@@ -417,11 +419,15 @@ class GraphNodes:
         return {"current_stage": "succeeded"}
 
     async def failed_report(self, state: RepoPilotState) -> dict[str, object]:
+        exhausted_patch_retry = (
+            state["error_type"] in {"patch_invalid", "patch_apply_failed"}
+            and state["retry_count"] >= state["max_retries"]
+        )
         exhausted_fixable = bool(
             (state["failure_analysis"] or {}).get("fixable")
             or (state["review_decision"] or {}).get("critical_findings")
         ) and state["retry_count"] >= state["max_retries"]
-        error_type = state["error_type"] or (
+        error_type = "retry_exhausted" if exhausted_patch_retry else state["error_type"] or (
             "retry_exhausted" if exhausted_fixable else "test_failed"
         )
         message = state["error_message"] or "The task could not produce an approved passing change."

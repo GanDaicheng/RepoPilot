@@ -118,6 +118,24 @@ def test_request_body_and_field_lengths_are_bounded(
     assert bounded_field.status_code == 422
 
 
+def test_chunked_request_without_content_length_is_bounded(tmp_path: Path) -> None:
+    app = create_app(settings(tmp_path), overrides=AppOverrides(worker=IdleWorker()))
+
+    def chunks():
+        yield b"x" * 40_000
+        yield b"x" * 40_000
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/tasks",
+            content=chunks(),
+            headers={"content-type": "application/json"},
+        )
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "request_too_large"
+
+
 def test_unallowlisted_executable_is_accepted_then_safely_paused(
     git_repo: Path, tmp_path: Path
 ) -> None:

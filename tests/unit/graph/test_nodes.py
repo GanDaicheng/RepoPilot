@@ -21,6 +21,7 @@ from repopilot.workspace.worktree import RepoSnapshot, WorktreeInfo
 class TaskView:
     cancel_requested: bool = False
     base_commit: str | None = None
+    status: object | None = None
 
 
 class TaskRepo:
@@ -49,6 +50,10 @@ class TaskRepo:
         if self.persisted_base_commit is None:
             self.persisted_base_commit = base_commit
         return TaskView(base_commit=self.persisted_base_commit)
+
+    async def transition(self, task_id: str, target, **kwargs: object) -> TaskView:
+        del task_id, kwargs
+        return TaskView(base_commit=self.persisted_base_commit, status=target)
 
 
 class Events:
@@ -208,6 +213,51 @@ async def test_patch_and_test_results_are_application_truth_and_outputs_are_capp
     assert EventType.PATCH_APPLIED in emitted
     assert EventType.TEST_COMPLETED in emitted
     assert set(emitted) <= set(EventType)
+
+
+@pytest.mark.asyncio
+async def test_patch_tool_infrastructure_failure_does_not_consume_code_retry(
+    tmp_path: Path,
+) -> None:
+    nodes = GraphNodes(
+        deps(
+            tmp_path,
+            patcher=lambda root, patch, **kwargs: ToolResult.failure(
+                "tool_unavailable", "Git is unavailable."
+            ),
+        )
+    )
+    state = initial_state(
+        task_id="task-1",
+        thread_id="11111111-1111-4111-8111-111111111111",
+        repo_path=str(tmp_path / "repo"),
+        user_request="Change",
+        test_command="pytest -q",
+        max_retries=2,
+    )
+    state.update(worktree_path=str(tmp_path / "repo"), patch_text="patch")
+
+    update = await nodes.apply_patch(state)
+
+    assert update["error_type"] == "tool_error"
+
+
+@pytest.mark.asyncio
+async def test_exhausted_patch_retry_reports_retry_exhausted(tmp_path: Path) -> None:
+    nodes = GraphNodes(deps(tmp_path))
+    state = initial_state(
+        task_id="task-1",
+        thread_id="11111111-1111-4111-8111-111111111111",
+        repo_path=str(tmp_path / "repo"),
+        user_request="Change",
+        test_command="pytest -q",
+        max_retries=1,
+    )
+    state.update(error_type="patch_apply_failed", retry_count=1)
+
+    update = await nodes.failed_report(state)
+
+    assert update["error_type"] == "retry_exhausted"
 
 
 @pytest.mark.asyncio
