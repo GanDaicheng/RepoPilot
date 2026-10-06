@@ -4,6 +4,10 @@ __pycache__/
 .coverage
 htmlcov/
 .venv/
+.env
+.env.*
+!.env.example
+.repopilot-data/
 dist/
 build/
 *.egg-info/
