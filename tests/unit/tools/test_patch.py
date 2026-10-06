@@ -106,8 +106,11 @@ def test_apply_patch_matches_crlf_checkout_context(git_repo: Path) -> None:
     (git_repo / "app.py").write_bytes(b"value = 1\r\n")
 
     result = apply_patch(git_repo, MODIFY_PATCH)
+    replay = apply_patch(git_repo, MODIFY_PATCH, already_applied_ok=True)
 
     assert result.ok is True
+    assert replay.ok is True
+    assert replay.data is not None and replay.data.already_applied is True
     assert (git_repo / "app.py").read_text(encoding="utf-8") == "value = 2\n"
 
 
