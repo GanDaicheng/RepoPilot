@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -101,6 +102,27 @@ def test_rejects_data_directory_inside_original_repository(git_repo: Path) -> No
 
     assert result.ok is False
     assert result.error_code == "data_dir_inside_repository"
+    assert not (git_repo / ".repopilot-data").exists()
+
+
+def test_rejects_symlink_escape_below_data_directory(
+    git_repo: Path,
+    tmp_path: Path,
+) -> None:
+    data_dir = tmp_path / "data"
+    outside = tmp_path / "outside"
+    data_dir.mkdir()
+    outside.mkdir()
+    try:
+        (data_dir / "worktrees").symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"The operating system denied symlink creation: {exc}")
+
+    result = WorktreeManager(data_dir).create(git_repo, "escaped-task")
+
+    assert result.ok is False
+    assert result.error_code == "workspace_boundary_violation"
+    assert not any(outside.iterdir())
 
 
 def test_cleanup_requires_explicit_approval(git_repo: Path, tmp_path: Path) -> None:
@@ -115,6 +137,25 @@ def test_cleanup_requires_explicit_approval(git_repo: Path, tmp_path: Path) -> N
     assert result.error_code == "approval_required"
     assert created.data.path.exists()
     assert manager.cleanup(created.data, approved=True).ok is True
+
+
+def test_cleanup_rejects_forged_task_identity(git_repo: Path, tmp_path: Path) -> None:
+    manager = WorktreeManager(tmp_path / "data")
+    created = manager.create(git_repo, "victim")
+    assert created.ok is True
+    assert created.data is not None
+    info = created.data
+    forged = replace(
+        info,
+        task_id=f"../{info.path.parent.name}/{info.task_id}",
+    )
+
+    result = manager.cleanup(forged, approved=True)
+
+    assert result.ok is False
+    assert result.error_code == "invalid_task_id"
+    assert info.path.exists()
+    assert manager.cleanup(info, approved=True).ok is True
 
 
 def test_approved_cleanup_removes_only_dirty_managed_worktree(
@@ -137,4 +178,3 @@ def test_approved_cleanup_removes_only_dirty_managed_worktree(
     assert not created.data.path.exists()
     assert git_repo.exists()
     assert sentinel.read_text(encoding="utf-8") == "keep"
-

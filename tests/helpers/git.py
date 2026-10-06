@@ -36,4 +36,3 @@ def init_repo(path: Path, files: Mapping[str, str]) -> Path:
         "fixture",
     )
     return path
-

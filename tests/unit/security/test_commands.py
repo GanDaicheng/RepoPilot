@@ -49,4 +49,3 @@ def test_shell_syntax_is_permanently_denied(token: str) -> None:
     )
 
     assert decision.outcome == "deny"
-

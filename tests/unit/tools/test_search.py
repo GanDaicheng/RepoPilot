@@ -84,4 +84,3 @@ def test_search_reports_missing_rg(monkeypatch, tmp_path: Path) -> None:
 
     assert result.ok is False
     assert result.error_code == "tool_unavailable"
-

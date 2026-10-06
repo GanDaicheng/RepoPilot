@@ -60,4 +60,3 @@ class ToolResult(Generic[T]):
             duration_ms=duration_ms,
             metadata=_frozen_metadata(metadata),
         )
-

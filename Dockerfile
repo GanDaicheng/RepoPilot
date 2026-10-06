@@ -6,4 +6,3 @@ RUN groupadd --gid 10001 repopilot \
 
 WORKDIR /workspace
 USER 10001:10001
-

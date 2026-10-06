@@ -199,6 +199,15 @@ class WorktreeManager:
                 "The RepoPilot data directory must be outside the original repository.",
                 duration_ms=_elapsed_ms(started),
             )
+        try:
+            data_root.mkdir(parents=True, exist_ok=True)
+            data_root = data_root.resolve(strict=True)
+        except (OSError, RuntimeError):
+            return ToolResult.failure(
+                "workspace_boundary_violation",
+                "The RepoPilot data directory cannot be resolved safely.",
+                duration_ms=_elapsed_ms(started),
+            )
 
         snapshot_result = capture_repo_snapshot(repo)
         if not snapshot_result.ok or snapshot_result.data is None:
@@ -210,6 +219,12 @@ class WorktreeManager:
         snapshot = snapshot_result.data
         branch = f"repopilot/{task_id}"
         expected_path = self._expected_path(repo, task_id)
+        if not expected_path.is_relative_to(data_root):
+            return ToolResult.failure(
+                "workspace_boundary_violation",
+                "The managed worktree path resolves outside the data directory.",
+                duration_ms=_elapsed_ms(started),
+            )
         registered_result = _registered_worktrees(repo)
         if not registered_result.ok or registered_result.data is None:
             return ToolResult.failure(
@@ -318,6 +333,18 @@ class WorktreeManager:
                 "Removing a managed worktree requires explicit approval.",
                 duration_ms=_elapsed_ms(started),
             )
+        if TASK_ID_RE.fullmatch(info.task_id) is None:
+            return ToolResult.failure(
+                "invalid_task_id",
+                "The managed worktree carries an invalid task identity.",
+                duration_ms=_elapsed_ms(started),
+            )
+        if info.branch != f"repopilot/{info.task_id}":
+            return ToolResult.failure(
+                "workspace_conflict",
+                "The managed worktree branch does not match its task identity.",
+                duration_ms=_elapsed_ms(started),
+            )
         repo, error_code = _repository_root(info.original_repo)
         if repo is None:
             return ToolResult.failure(
@@ -355,6 +382,13 @@ class WorktreeManager:
             return ToolResult.failure(
                 "workspace_conflict",
                 "The path is not a registered worktree of the original repository.",
+                duration_ms=_elapsed_ms(started),
+            )
+        registered = registered_result.data[actual_path]
+        if registered.get("branch") != f"refs/heads/{info.branch}":
+            return ToolResult.failure(
+                "workspace_conflict",
+                "The registered worktree branch does not match the cleanup request.",
                 duration_ms=_elapsed_ms(started),
             )
         try:

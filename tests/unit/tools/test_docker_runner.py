@@ -149,6 +149,27 @@ def test_runner_maps_timeout_to_test_timeout(monkeypatch, tmp_path: Path) -> Non
     assert result.error_code == "test_timeout"
 
 
+def test_runner_bounds_multibyte_output_to_one_mebibyte(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    runner = DockerTestRunner()
+    _available(runner, monkeypatch)
+    oversized = "你" * 400_000
+    monkeypatch.setattr(
+        tests_module.subprocess,
+        "run",
+        lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, oversized, ""),
+    )
+
+    result = runner.run(tmp_path, "pytest -q")
+
+    assert result.ok is True
+    assert result.data is not None
+    assert len(result.data.stdout.encode("utf-8")) <= 1_048_576
+    assert result.metadata["stdout_truncated"] is True
+
+
 def test_unavailable_daemon_returns_docker_unavailable(monkeypatch) -> None:
     monkeypatch.setattr(
         tests_module.subprocess,
@@ -165,4 +186,3 @@ def test_unavailable_daemon_returns_docker_unavailable(monkeypatch) -> None:
 
     assert result.ok is False
     assert result.error_code == "docker_unavailable"
-

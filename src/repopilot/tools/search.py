@@ -155,4 +155,3 @@ def search_code(
         duration_ms=_elapsed_ms(started),
         metadata={"truncated": truncated},
     )
-

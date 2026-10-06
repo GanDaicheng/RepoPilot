@@ -47,4 +47,3 @@ def test_result_metadata_is_read_only_mapping() -> None:
         success.metadata["attempt"] = 3  # type: ignore[index]
     with pytest.raises(TypeError):
         failure.metadata["attempt"] = 3  # type: ignore[index]
-

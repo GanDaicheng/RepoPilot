@@ -90,4 +90,3 @@ python -m pytest -q
 - M2：单 Agent 修复循环、LangGraph 状态机、SQLite checkpoint、FastAPI 与 SSE。
 - M3：Human-in-the-loop 持久化审批、MCP Server、任务产物、评测集与指标。
 - M4：OpenAI Agents SDK 主管/开发/测试/审查 Agent、Handoff，以及千问、DeepSeek 和通用 OpenAI-compatible 模型配置与 tracing。
-

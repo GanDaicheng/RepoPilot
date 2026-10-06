@@ -53,11 +53,14 @@ class TestRunResult:
     duration_ms: int
 
 
-MAX_CAPTURE_CHARS = 1_048_576
+MAX_CAPTURE_BYTES = 1_048_576
 
 
 def _bounded_tail(value: str) -> tuple[str, bool]:
-    return value[-MAX_CAPTURE_CHARS:], len(value) > MAX_CAPTURE_CHARS
+    encoded = value.encode("utf-8")
+    if len(encoded) <= MAX_CAPTURE_BYTES:
+        return value, False
+    return encoded[-MAX_CAPTURE_BYTES:].decode("utf-8", errors="ignore"), True
 
 
 class DockerTestRunner:

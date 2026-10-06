@@ -82,4 +82,3 @@ def test_git_tools_reject_non_repository(tmp_path: Path) -> None:
     assert status.error_code == "not_git_repository"
     assert diff.ok is False
     assert diff.error_code == "not_git_repository"
-

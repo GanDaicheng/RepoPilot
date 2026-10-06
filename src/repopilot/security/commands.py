@@ -64,4 +64,3 @@ def evaluate_test_command(
         argv=argv,
         reason="The executable is not on the default test-runner allowlist.",
     )
-

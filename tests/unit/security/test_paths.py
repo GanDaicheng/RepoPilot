@@ -61,4 +61,3 @@ def test_resolve_rejects_missing_descendant_below_external_symlink(
             os.path.join("escape", "missing", "file.txt"),
             must_exist=False,
         )
-

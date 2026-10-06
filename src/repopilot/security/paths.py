@@ -41,4 +41,3 @@ def resolve_workspace_path(
     if not resolved_candidate.is_relative_to(resolved_root):
         raise WorkspaceBoundaryError("The requested path points outside the workspace.")
     return resolved_candidate
-

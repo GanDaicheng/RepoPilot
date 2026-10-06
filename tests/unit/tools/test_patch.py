@@ -127,4 +127,3 @@ def test_multifile_patch_is_atomic_when_one_target_is_invalid(git_repo: Path) ->
     assert result.error_code == "workspace_boundary_violation"
     assert _snapshot(git_repo) == before
     assert not (git_repo.parent / "escape.py").exists()
-

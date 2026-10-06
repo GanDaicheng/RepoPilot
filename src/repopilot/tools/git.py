@@ -207,4 +207,3 @@ def git_diff(worktree_root: Path) -> ToolResult[GitDiffData]:
 
     data = GitDiffData(patch="".join(patch_parts), changed_files=changed_files)
     return ToolResult.success(data, duration_ms=_elapsed_ms(started))
-

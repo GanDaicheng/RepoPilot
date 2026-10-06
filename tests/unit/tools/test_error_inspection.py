@@ -70,4 +70,3 @@ def test_empty_output_returns_empty_summary() -> None:
     assert result.data.locations == ()
     assert result.data.tail == ""
     assert result.data.truncated is False
-

@@ -30,4 +30,3 @@ def test_real_container_runs_fixture_tests_without_network(tmp_path: Path) -> No
     assert failing.ok is True
     assert failing.data is not None
     assert failing.data.exit_code != 0
-
